@@ -97,6 +97,12 @@ class PARMGraphWorkflow:
             logger.info("Emergency response, skipping refinement")
             return "approve"
 
+        # CRITICAL: If contraindications detected, escalate immediately (don't refine)
+        if state.safety_violations:
+            logger.error(f"Safety violations detected: {state.safety_violations}")
+            logger.error("Cannot refine response with contraindications - escalating")
+            return "approve"  # Send to Memory node for escalation
+
         # Check if we've exceeded max iterations
         max_iterations = 3
         if state.reflection_iterations >= max_iterations:

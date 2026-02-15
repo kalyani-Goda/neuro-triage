@@ -40,6 +40,7 @@ class AgentState:
     critique_feedback: Optional[str] = None
     safety_violations: List[str] = field(default_factory=list)
     contraindication_check: bool = True
+    is_approved: bool = False  # Safety approval status
 
     # Final Response
     final_response: Optional[str] = None

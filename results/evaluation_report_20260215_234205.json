@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-02-15T23:42:05.058670",
+  "triage_metrics": {
+    "recall": 0.3333333333333333,
+    "precision": 1.0,
+    "f1_score": 0.5,
+    "specificity": 1.0,
+    "confusion_matrix": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 2,
+      "true_negatives": 2
+    }
+  },
+  "safety_metrics": {
+    "total_queries": 8,
+    "approval_rate": 0.875,
+    "escalation_rate": 0.125,
+    "error_rate": 0.0,
+    "contraindications_caught": 4,
+    "hallucinations_detected": 3
+  },
+  "performance_metrics": {
+    "latency_ms": {
+      "mean": 14564.792119539701,
+      "median": 12184.67116355896,
+      "p95": 33675.840854644775,
+      "p99": 33675.840854644775
+    },
+    "reflection_iterations": {
+      "mean": 1.1538461538461537
+    },
+    "tokens_per_response": {
+      "mean": 0
+    }
+  },
+  "benchmarks": {
+    "medqa_count": 5,
+    "safety_test_count": 5,
+    "hallucination_test_count": 3
+  }
+}

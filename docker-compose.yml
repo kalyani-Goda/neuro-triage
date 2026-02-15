@@ -7,11 +7,13 @@ services:
       POSTGRES_USER: neuro_user
       POSTGRES_PASSWORD: secure_password_here
       POSTGRES_DB: neuro_triage
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/init_langfuse_db.sql:/docker-entrypoint-initdb.d/init_langfuse.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U neuro_user -d neuro_triage"]
       interval: 10s
@@ -48,9 +50,27 @@ services:
       timeout: 5s
       retries: 5
 
-  # Langfuse - Observability & Monitoring
+  # ClickHouse - Required for Langfuse v3 (optional, can skip for v2-compatible mode)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: neuro-triage-clickhouse
+    environment:
+      CLICKHOUSE_DB: langfuse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    profiles:
+      - langfuse-v3
+
+  # Langfuse - Observability & Monitoring (v2 - uses only PostgreSQL)
   langfuse:
-    image: ghcr.io/langfuse/langfuse:latest
+    image: ghcr.io/langfuse/langfuse:2.46.0
     container_name: neuro-triage-langfuse
     depends_on:
       postgres:
@@ -58,11 +78,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://neuro_user:secure_password_here@postgres:5432/neuro_triage
-      NEXTAUTH_SECRET: your_nextauth_secret_here
+      DATABASE_URL: postgresql://neuro_user:secure_password_here@postgres:5432/langfuse
+      NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
       NEXTAUTH_URL: http://localhost:3000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -71,6 +91,7 @@ volumes:
   postgres_data:
   qdrant_data:
   redis_data:
+  clickhouse_data:
 
 networks:
   default:

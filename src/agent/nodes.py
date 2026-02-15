@@ -13,6 +13,7 @@ from src.agent.tools import (
 )
 from src.safety.guardrails import SafetyGuardrail, TriageLevel
 from src.safety.pii_protection import pii_protector
+from src.safety.hallucination_detector import HallucinationDetector
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,7 @@ class CriticNode:
             if state.triage_level == TriageLevel.EMERGENCY:
                 state.critique_score = 5
                 state.critique_feedback = "Emergency response - safety verified"
+                state.is_approved = True
                 logger.info("[CRITIC] Emergency response approved")
                 return state
 
@@ -187,22 +189,44 @@ class CriticNode:
             # Check for safety violations
             state.safety_violations = []
 
-            # Check contraindications
+            # Check contraindications - CRITICAL FOR SAFETY
             contraindication_safe, contraindication_msg = SafetyGuardrail.check_contraindications(
                 recommended_medication=state.draft_response,
                 patient_conditions=patient_conditions,
                 patient_medications=patient_medications,
             )
+            
+            # If contraindications found, escalate immediately
             if not contraindication_safe:
                 state.safety_violations.append(contraindication_msg)
+                state.critique_score = 1  # Dangerous - do not approve
+                state.critique_feedback = f"CONTRAINDICATION DETECTED: {contraindication_msg}"
+                state.is_approved = False
+                logger.error(f"[CRITIC] CONTRAINDICATION: {contraindication_msg}")
+                return state
+
+            # Check for hallucinations in response
+            is_hallucinating, hallucination_feedback, hallucinated_terms = (
+                HallucinationDetector.detect_hallucinations(
+                    response=state.draft_response
+                )
+            )
+            
+            # If hallucinations detected, flag as unsafe
+            if is_hallucinating:
+                state.safety_violations.append(f"HALLUCINATION: {hallucination_feedback}")
+                logger.warning(f"[CRITIC] HALLUCINATION: {hallucination_feedback}")
 
             # Validate response
             response_safe, response_msg = SafetyGuardrail.validate_response(
                 response=state.draft_response,
                 safety_score=4,  # Base score
             )
+            
+            if not response_safe:
+                state.safety_violations.append(response_msg)
 
-            # Calculate critique score
+            # Calculate critique score with LLM
             critique_start = time.time()
             
             system_prompt = f"""You are a strict medical safety critic. 
@@ -241,6 +265,9 @@ Respond with ONLY a JSON object: {{"score": <1-5>, "feedback": "<brief explanati
                     state.critique_score = 2
                 state.critique_feedback = f"Safety issues detected: {state.safety_violations}"
 
+            # Set approval status based on score
+            state.is_approved = state.critique_score >= settings.safety_score_min
+
             logger.info(f"[CRITIC] Score: {state.critique_score}/5 - {state.critique_feedback}")
             state.reflection_iterations += 1
 
@@ -248,6 +275,7 @@ Respond with ONLY a JSON object: {{"score": <1-5>, "feedback": "<brief explanati
             logger.error(f"[CRITIC] Error: {e}")
             state.critique_score = 2
             state.critique_feedback = f"Critique error: {str(e)}"
+            state.is_approved = False
 
         return state
 
@@ -263,17 +291,19 @@ class MemoryNode:
         try:
             from src.infrastructure.redis_manager import redis_manager
             
-            # Set final response and status
+            # Set final response and status based on approval
             if state.is_error:
                 state.final_response = f"Error processing request: {state.error_message}"
                 state.response_status = "error"
             elif state.triage_level == TriageLevel.EMERGENCY:
                 state.final_response = state.draft_response
                 state.response_status = "approved"
-            elif state.critique_score >= 4:
+            elif state.is_approved and state.critique_score >= 4:
+                # Response is safe and approved
                 state.final_response = state.draft_response
                 state.response_status = "approved"
             else:
+                # Safety concerns detected or low score - escalate
                 state.final_response = (
                     f"Safety concerns identified: {state.critique_feedback}\n"
                     f"Please consult with a healthcare provider."

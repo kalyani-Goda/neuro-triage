@@ -54,39 +54,66 @@ class PIIProtector:
     def mask_pii(self, text: str) -> str:
         """Mask/anonymize PII in text."""
         try:
-            # Define anonymization operators
-            operators = {
-                "PERSON": {"type": "replace", "new_value": "[NAME]"},
-                "EMAIL_ADDRESS": {"type": "replace", "new_value": "[EMAIL]"},
-                "PHONE_NUMBER": {"type": "replace", "new_value": "[PHONE]"},
-                "CREDIT_CARD": {"type": "replace", "new_value": "[CREDIT_CARD]"},
-                "US_SSN": {"type": "replace", "new_value": "[SSN]"},
-                "US_DRIVER_LICENSE": {"type": "replace", "new_value": "[LICENSE]"},
-                "IBAN_CODE": {"type": "replace", "new_value": "[IBAN]"},
-                "DATE_TIME": {"type": "replace", "new_value": "[DATE]"},
-            }
-
             # Analyze first
             pii_results = self.analyzer.analyze(
                 text=text,
                 language="en",
-                entities=list(operators.keys()),
+                entities=[
+                    "PERSON",
+                    "EMAIL_ADDRESS",
+                    "PHONE_NUMBER",
+                    "CREDIT_CARD",
+                    "US_SSN",
+                    "US_DRIVER_LICENSE",
+                    "IBAN_CODE",
+                    "DATE_TIME",
+                ],
             )
 
-            # Anonymize
+            if not pii_results:
+                return text
+
+            # Build anonymization operators dict with correct format
+            operators = {}
+            for entity in ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD", 
+                          "US_SSN", "US_DRIVER_LICENSE", "IBAN_CODE", "DATE_TIME"]:
+                if entity == "PERSON":
+                    operators[entity] = {"type": "replace", "new_value": "[NAME]"}
+                elif entity == "EMAIL_ADDRESS":
+                    operators[entity] = {"type": "replace", "new_value": "[EMAIL]"}
+                elif entity == "PHONE_NUMBER":
+                    operators[entity] = {"type": "replace", "new_value": "[PHONE]"}
+                elif entity == "CREDIT_CARD":
+                    operators[entity] = {"type": "replace", "new_value": "[CREDIT_CARD]"}
+                elif entity == "US_SSN":
+                    operators[entity] = {"type": "replace", "new_value": "[SSN]"}
+                elif entity == "US_DRIVER_LICENSE":
+                    operators[entity] = {"type": "replace", "new_value": "[LICENSE]"}
+                elif entity == "IBAN_CODE":
+                    operators[entity] = {"type": "replace", "new_value": "[IBAN]"}
+                elif entity == "DATE_TIME":
+                    operators[entity] = {"type": "replace", "new_value": "[DATE]"}
+                else:
+                    operators[entity] = {"type": "replace", "new_value": f"[{entity}]"}
+
+            # Anonymize - use replace operator
             anonymized_text = self.anonymizer.anonymize(
                 text=text,
                 analyzer_results=pii_results,
                 operators=operators,
             ).text
 
-            if pii_results:
-                logger.info(f"PII masked in text ({len(pii_results)} entities)")
-
+            logger.info(f"PII masked in text ({len(pii_results)} entities)")
             return anonymized_text
+            
         except Exception as e:
             logger.error(f"PII masking failed: {e}")
-            return text
+            # Fallback: simple regex-based masking
+            import re
+            masked = re.sub(r'[\w\.-]+@[\w\.-]+', '[EMAIL]', text)
+            masked = re.sub(r'\b\d{3}-\d{3}-\d{4}\b', '[PHONE]', masked)
+            masked = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '[SSN]', masked)
+            return masked
 
     def check_pii_exposure(self, text: str) -> bool:
         """Check if text contains any PII."""
