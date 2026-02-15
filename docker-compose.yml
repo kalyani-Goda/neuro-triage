@@ -1,0 +1,77 @@
+services:
+  # PostgreSQL - Patient & Medical Data
+  postgres:
+    image: postgres:16-alpine
+    container_name: neuro-triage-postgres
+    environment:
+      POSTGRES_USER: neuro_user
+      POSTGRES_PASSWORD: secure_password_here
+      POSTGRES_DB: neuro_triage
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuro_user -d neuro_triage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Qdrant - Vector Database for Medical Knowledge (FREE, No API Key needed)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: neuro-triage-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    # No API key required for local Docker deployment
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Session State & Caching
+  redis:
+    image: redis:7-alpine
+    container_name: neuro-triage-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Langfuse - Observability & Monitoring
+  langfuse:
+    image: ghcr.io/langfuse/langfuse:latest
+    container_name: neuro-triage-langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://neuro_user:secure_password_here@postgres:5432/neuro_triage
+      NEXTAUTH_SECRET: your_nextauth_secret_here
+      NEXTAUTH_URL: http://localhost:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  redis_data:
+
+networks:
+  default:
+    name: neuro-triage-network
